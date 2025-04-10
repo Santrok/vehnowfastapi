@@ -1,0 +1,7 @@
+fastapi==0.101.0
+sqladmin==0.14.1
+sqlmodel==0.0.8
+starlette==0.27.0
+uvicorn==0.23.2
+itsdangerous==2.1.2
+psycopg2==2.9.7
