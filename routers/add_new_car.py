@@ -33,6 +33,7 @@ def add_new_car(car_data: Car, session: database.Session = Depends(database.get_
         if not car_brand:
             car_brand = CarBrand(name=brand_name)
             session.add(car_brand)
+        car_data_dict["brand_id"] = car_brand.id
 
         car = session.query(Car).where(Car.vin == car_data_dict['vin']).first()
         if car:

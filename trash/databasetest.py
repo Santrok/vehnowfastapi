@@ -26,7 +26,7 @@ import time
 #logging.basicConfig()
 #logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
-engine = create_engine('postgresql://vehuser:vehpassword@84.54.47.216:5433/vehnow', pool_size=300, max_overflow=400, pool_use_lifo=True,pool_recycle=600)
+engine = create_engine('postgresql://vehuser:vehpassword@localhost:5432/vehnow', pool_size=300, max_overflow=400, pool_use_lifo=True,pool_recycle=600)
 
 engine.connect()
 

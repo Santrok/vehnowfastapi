@@ -47,7 +47,7 @@ engine = create_engine(settings.DATABASE_PATH, pool_size=10000, max_overflow=100
 
 #print('here')
 
-#CarModel.metadata.create_all(engine)
+# CarModel.metadata.create_all(engine)
 '''
 def get_session():
     with Session(engine) as session:
@@ -62,6 +62,12 @@ def get_session():
         yield session
     finally:
         session.close()
+
+# Для Celery задач (обычная функция)
+def get_db_session() -> Session:
+    """Создает и возвращает новую сессию для Celery.
+    Важно всегда закрывать вручную."""
+    return SessionLocal()
 '''
 SessionLocal = sessionmaker(
     autocommit=False, autoflush=False, bind=engine, expire_on_commit=False

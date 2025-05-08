@@ -18,3 +18,4 @@ class Car(SQLModel, table=True):
     photo: List[str] = Field(default=None)
     is_hidden: bool = Field(default=False)
     is_hidden_v2: bool = Field(default=False)
+    brand_id: int = Field(default=None)

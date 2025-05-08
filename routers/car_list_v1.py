@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Path, HTTPException
 import database
+from logger import logger
 from models.car import Car
 #from models.recent_vin import RecentVin
 import random
+
+from models.pagination import AllCarPagination, BrandCarPagination
 from tools import Tools
 from sqlmodel import text
 
@@ -11,8 +14,7 @@ from models.recent import Recent
 
 #from models.car_views_v import CarViewsV
 
-from sqlalchemy import update
-
+from sqlalchemy import update, desc
 
 from models.car_v import CarV
 
@@ -40,34 +42,121 @@ router = APIRouter(
 
 
 
-@router.get("/")
-def get_all_items(page: int = 1, per_page: int = 10, session: database.Session = Depends(database.get_session)):
-    start = time.time()
-    query = session.query(Car).filter(Car.is_hidden == False)
-
-    #total_items = query.count()
-
-    total_items2 = session.execute('SELECT count(*) AS count_1 FROM car WHERE car.is_hidden = false')
-    total_items = int(str(total_items2.first()).replace('(', '').replace(')', '').replace(',', ''))
-
-    #query = query.order_by(Car.id.desc())
-
-    items = query.order_by(Car.id.desc()).limit(per_page).offset((page - 1) * per_page).all()
-    #res = session.execute(query)
-    #items = res.scalars().all()
-    #items = query.all()
-
-
-    for item in items:
-        item.photo = [photo.replace('{', '').replace('}', '').strip() for photo in item.photo.split(',')] if item.photo else []
-    end = time.time()
-    return {
-        "count": total_items,
-        "next": f"/?page={page + 1}&per_page={per_page}" if total_items > 1 else None,
-        "previous": f"/?page={page - 1}&per_page={per_page}" if page > 1 else None,
-        "results": items,
-        'execution_time': str(end-start)
+@router.get(
+    "/",
+    response_model=dict,
+    summary="Получить автомобили постранично",
+    description="""
+    Получает список автомобилей для указанной страницы.
+    Использует предварительно сгенерированную пагинацию через таблицу AllCarPagination.
+    """,
+    responses={
+        200: {
+            "description": "Успешный ответ",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "count": 100,
+                        "next": "/?page=2&per_page=10",
+                        "previous": None,
+                        "results": [
+                            {
+                                "id": "int",
+                                "year": "int",
+                                "brand": "str",
+                                "model": "str",
+                                "vin": "str",
+                                "odometer": "str",
+                                "engine": "str",
+                                "gearbox": "str",
+                                "drive_train": "str",
+                                "auction_date": "str",
+                                "sale_type": "str",
+                                "damage": "str",
+                                "photo": ["str", "str"],
+                                "is_hidden": "bool",
+                                "is_hidden_v2": "bool",
+                                "brand_id": "int"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        500: {
+            "description": "Ошибка сервера",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Internal Server Error"}
+                }
+            }
+        }
     }
+)
+def get_all_items(
+        page: int = Query(1, description="Номер страницы", ge=1),
+        per_page: int = Query(10, description="Элементов на странице", ge=1, le=100),
+        session: database.Session = Depends(database.get_session)
+) -> dict:
+    """
+    Получение пагинированного списка автомобилей
+
+    Args:
+        page: Номер запрашиваемой страницы
+        per_page: Количество элементов на странице
+        session: Сессия базы данных
+
+    Returns:
+        Словарь с результатами и метаданными пагинации
+    """
+    try:
+        # Получение ID автомобилей для страницы
+        page_data = session.query(AllCarPagination) \
+            .filter(AllCarPagination.page == page) \
+            .first()
+
+        if not page_data or not page_data.car_ids:
+            return {
+                "count": 0,
+                "next": None,
+                "previous": None,
+                "results": []
+            }
+
+        # Получение автомобилей
+        cars = session.query(Car) \
+            .filter(
+            Car.id.in_(page_data.car_ids),
+            Car.is_hidden == False
+        ) \
+            .order_by(desc(Car.id)) \
+            .all()
+
+        # Обработка фото
+        for car in cars:
+            if car.photo:
+                car.photo = [
+                    photo.strip('{}').strip()
+                    for photo in car.photo.split(',')
+                ]
+
+        # Получение общего количества страниц
+        total_pages = session.query(func.max(AllCarPagination.page)).scalar()
+
+        return {
+            "count": len(cars),
+            'total_pages': total_pages,
+            "next": f"/?page={page + 1}&per_page={per_page}" if page < total_pages else None,
+            "previous": f"/?page={page - 1}&per_page={per_page}" if page > 1 else None,
+            "results": cars
+        }
+
+    except Exception as e:
+        print(f"Ошибка: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal Server Error"
+        )
 
 @router.get("/l/")
 def get_all_items_l(page: int = 1, per_page: int = 10, session: database.Session = Depends(database.get_session)):
@@ -515,29 +604,151 @@ def get_recent(page: int = 1, per_page: int = 10, session: database.Session = De
     }
 
 
-@router.get("/{brand}/")
-def get_brand(brand: str, page: int = 1, per_page: int = 10, session: database.Session = Depends(database.get_session)):
-
-    query = session.query(Car).filter(Car.brand == brand.upper(), Car.is_hidden == False)
-
-    total_items = query.count()
-    query = query.order_by(Car.id.desc())
-
-    items = query.limit(per_page).offset((page - 1) * per_page).all()
-
-    for item in items:
-        item.photo = [photo.replace('{', '').replace('}', '').strip() for photo in item.photo.split(',')] if item.photo else []
-        try:
-            item.model = item.model.split('/')[0]
-        except:
-            pass
-
-    return {
-        "count": total_items,
-        "next": f"/?page={page + 1}&per_page={per_page}" if total_items > 1 else None,
-        "previous": f"/?page={page - 1}&per_page={per_page}" if page > 1 else None,
-        "results": items
+@router.get(
+    "/{brand}/",
+    response_model=dict,
+    summary="Получить автомобили бренда постранично",
+    description="""
+    Получает список автомобилей указанного бренда для конкретной страницы.
+    Использует предварительно сгенерированную пагинацию через таблицу BrandCarPagination.
+    """,
+    responses={
+        200: {
+            "description": "Успешный ответ",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "brand": "Toyota",
+                        "current_page": 1,
+                        "total_pages": 5,
+                        "next": "/Toyota/?page=2&per_page=10",
+                        "previous": None,
+                        "results": [
+                            {
+                                "id": "int",
+                                "year": "int",
+                                "brand": "str",
+                                "model": "str",
+                                "vin": "str",
+                                "odometer": "str",
+                                "engine": "str",
+                                "gearbox": "str",
+                                "drive_train": "str",
+                                "auction_date": "str",
+                                "sale_type": "str",
+                                "damage": "str",
+                                "photo": ["str", "str"],
+                                "is_hidden": "bool",
+                                "is_hidden_v2": "bool",
+                                "brand_id": "int"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Бренд не найден",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Данные пагинации для бренда не найдены"}
+                }
+            }
+        },
+        500: {
+            "description": "Ошибка сервера",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Internal Server Error"}
+                }
+            }
+        }
     }
+)
+def get_brand(
+        brand: str = Path(..., description="Название бренда", example="Toyota"),
+        page: int = Query(1, description="Номер страницы", ge=1),
+        per_page: int = Query(10, description="Элементов на странице", ge=1, le=100),
+        session: database.Session = Depends(database.get_session)
+) -> dict:
+    """
+    Получение пагинированного списка автомобилей по бренду
+
+    Args:
+        brand: Название бренда (из пути URL)
+        page: Номер запрашиваемой страницы
+        per_page: Количество элементов на странице
+        session: Сессия базы данных
+
+    Returns:
+        Словарь с результатами и метаданными пагинации:
+        {
+            "brand": str,
+            "current_page": int,
+            "total_pages": int,
+            "next": str | None,
+            "previous": str | None,
+            "results": List[Car]
+        }
+
+    Raises:
+        HTTPException 404: Если данные пагинации для бренда не найдены
+        HTTPException 500: При внутренних ошибках сервера
+    """
+    try:
+        # Получение данных пагинации для бренда
+        brand_pagination = session.query(BrandCarPagination) \
+            .filter(BrandCarPagination.brand == brand, BrandCarPagination.page_num == page) \
+            .first()
+
+        if not brand_pagination:
+            raise HTTPException(
+                status_code=404,
+                detail="Данные пагинации для бренда не найдены"
+            )
+
+        # Получение ID автомобилей для запрошенной страницы
+        page_ids = brand_pagination.car_ids
+
+        # Получение автомобилей
+        items = session.query(Car) \
+            .filter(
+            Car.id.in_(page_ids),
+            Car.is_hidden == False
+        ) \
+            .order_by(desc(Car.id)) \
+            .all()
+
+        # Обработка фото
+        for car in items:
+            if car.photo:
+                car.photo = [
+                    photo.strip('{}').strip()
+                    for photo in car.photo.split(',')
+                ]
+
+        # Получение общего количества страниц
+        total_pages = session.query(func.count(BrandCarPagination.page_num)) \
+            .filter(BrandCarPagination.brand == brand) \
+            .scalar()
+
+        return {
+            "brand": brand_pagination.brand,
+            "current_page": page,
+            "total_pages": total_pages,
+            "next": f"/{brand}/?page={page + 1}&per_page={per_page}" if page < total_pages else None,
+            "previous": f"/{brand}/?page={page - 1}&per_page={per_page}" if page > 1 else None,
+            "results": items
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при получении данных бренда: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal Server Error"
+        )
 
 @router.post("/add_view/{vin}/")
 def add_view(vin: str, session: database.Session = Depends(database.get_session)):
