@@ -1,0 +1,43 @@
+-- Добавление поля связи с брендами и заполнение столбца
+ALTER TABLE car
+ADD COLUMN brand_id INTEGER REFERENCES carbrand(id)
+
+UPDATE car AS t
+SET brand_id = st.id
+FROM carbrand AS st
+WHERE t.brand = st.name;
+
+-- Создание таблицы пагинации по всем машинам
+CREATE TABLE allcarpagination2 (
+    id SERIAL,
+    page INTEGER,
+    car_ids INTEGER[],
+    PRIMARY KEY (id)
+);
+
+-- Создание таблицы пагинации по брендам
+    CREATE TABLE brandcarpagination2 (
+    id SERIAL PRIMARY KEY,
+    brand VARCHAR NOT NULL,
+    brand_id INTEGER NOT NULL,
+    page_num INTEGER NOT NULL,
+    car_ids INTEGER[]
+);
+
+-- Создание таблицы пагинации по всем машинам
+CREATE TABLE allcarpagination (
+    id SERIAL,
+    page INTEGER,
+    car_ids INTEGER[],
+    PRIMARY KEY (id)
+);
+
+-- Создание таблицы пагинации по брендам
+    CREATE TABLE brandcarpagination (
+    id SERIAL PRIMARY KEY,
+    brand VARCHAR NOT NULL,
+    brand_id INTEGER NOT NULL,
+    page_num INTEGER NOT NULL,
+    car_ids INTEGER[]
+);
+
